@@ -8,7 +8,7 @@
   <meta property="og:title" content="Measuring Empowerment from Offline Data for Intrinsically Motivated Exploration">
   <meta property="og:description" content="We propose the first method for estimating empowerment from unlabeled prior data, without any environment interaction.">
   <meta property="og:image" content="static/images/antsoccer_heatmap.png">
-  <link rel="stylesheet" href="static/css/index.css?v=9">
+  <link rel="stylesheet" href="static/css/index.css?v=10">
   <script>
     window.MathJax = {
       tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -16,7 +16,7 @@
     };
   </script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.min.js"></script>
-  <script defer src="static/js/main.js?v=9"></script>
+  <script defer src="static/js/main.js?v=10"></script>
 </head>
 <body>
 
@@ -175,28 +175,6 @@
     <li>Can we use the offline empowerment estimator to improve online exploration?</li>
   </ol>
 
-  <h3 id="maps">Offline Empowerment Plots</h3>
-  <p>
-    <a href="#fig-maps">Figure 1</a> shows the empowerment recovered by our offline estimator on three OGBench environments; in each case it matches what we intuitively expect.
-    On <em>antsoccer-arena-navigate-v0</em> it peaks immediately around the ball in both plots, where the ant can freely choose whether to approach, dribble, or move away from it.
-    On <em>antmaze-medium-navigate-v0</em> it peaks at the maze's two corridor junctions and falls off in dead ends and corners.
-    On <em>pointmaze-teleport-navigate-v0</em> it collapses at each one-way teleporter entrance, where the agent has no control over its random next state.
-  </p>
-  <figure id="fig-maps">
-    <div class="maps-row">
-      <div><img src="static/images/antsoccer_heatmap.png" alt="Empowerment on antsoccer-arena-navigate"><p class="panel-caption">(a) Ant-Soccer Arena</p></div>
-      <div><img src="static/images/antmaze_heatmap.png" alt="Empowerment on antmaze-medium-navigate"><p class="panel-caption">(b) AntMaze</p></div>
-      <div><img src="static/images/pointmaze_teleport_heatmap.png" alt="Empowerment on pointmaze-teleport-navigate"><p class="panel-caption">(c) PointMaze-Teleport</p></div>
-    </div>
-    <figcaption>
-      <span class="fig-num">Figure 1.</span>
-      Empowerment recovered by our offline estimator; axes are the agent's \((x,y)\) position.
-      (a) <em>antsoccer-arena-navigate-v0</em> with the ball (circled in white) fixed off-center (left) and cornered (right); each point's color is the empowerment with the ant there.
-      (b) <em>antmaze-medium-navigate-v0</em>.
-      (c) <em>pointmaze-teleport-navigate-v0</em>, with teleporter entrances (solid circles) and exits (dashed).
-    </figcaption>
-  </figure>
-
   <h3 id="trajectories">Empowerment Along Trajectories</h3>
   <div class="traj-grid">
     <div class="traj" id="traj-antmaze">
@@ -241,6 +219,28 @@
       </p>
     </div>
   </div>
+
+  <h3 id="maps">Offline Empowerment Plots</h3>
+  <p>
+    <a href="#fig-maps">Figure 1</a> shows the empowerment recovered by our offline estimator on three OGBench environments; in each case it matches what we intuitively expect.
+    On <em>antsoccer-arena-navigate-v0</em> it peaks immediately around the ball in both plots, where the ant can freely choose whether to approach, dribble, or move away from it.
+    On <em>antmaze-medium-navigate-v0</em> it peaks at the maze's two corridor junctions and falls off in dead ends and corners.
+    On <em>pointmaze-teleport-navigate-v0</em> it collapses at each one-way teleporter entrance, where the agent has no control over its random next state.
+  </p>
+  <figure id="fig-maps">
+    <div class="maps-row">
+      <div><img src="static/images/antsoccer_heatmap.png" alt="Empowerment on antsoccer-arena-navigate"><p class="panel-caption">(a) Ant-Soccer Arena</p></div>
+      <div><img src="static/images/antmaze_heatmap.png" alt="Empowerment on antmaze-medium-navigate"><p class="panel-caption">(b) AntMaze</p></div>
+      <div><img src="static/images/pointmaze_teleport_heatmap.png" alt="Empowerment on pointmaze-teleport-navigate"><p class="panel-caption">(c) PointMaze-Teleport</p></div>
+    </div>
+    <figcaption>
+      <span class="fig-num">Figure 1.</span>
+      Empowerment recovered by our offline estimator; axes are the agent's \((x,y)\) position.
+      (a) <em>antsoccer-arena-navigate-v0</em> with the ball (circled in white) fixed off-center (left) and cornered (right); each point's color is the empowerment with the ant there.
+      (b) <em>antmaze-medium-navigate-v0</em>.
+      (c) <em>pointmaze-teleport-navigate-v0</em>, with teleporter entrances (solid circles) and exits (dashed).
+    </figcaption>
+  </figure>
 
   <h3 id="online">Online Exploration</h3>
   <p>
