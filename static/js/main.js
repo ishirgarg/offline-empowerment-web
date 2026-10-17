@@ -57,8 +57,10 @@
       return Math.round(B[k] + (x - k) * (B[k + 1] - B[k]));
     }
 
-    const W = 520, H = 330, L = 52, R = 10;
-    const top = { y0: 44, y1: 200 }, bot = { y0: 236, y1: 300 };
+    const hasState = cfg.states.length > 0;
+    const W = 520, L = 52, R = 10;
+    const top = { y0: 44, y1: 200 }, bot = hasState ? { y0: 236, y1: 300 } : { y0: 200, y1: 200 };
+    const H = bot.y1 + 30;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const X = x => L + (x / P) * (W - L - R);
     const eMin = Math.min(...cfg.emp), eMax = Math.max(...cfg.emp);
@@ -69,11 +71,11 @@
 
     // frames around the two panels
     el('rect', { x: L, y: 4, width: W - L - R, height: top.y1 - 4, fill: 'none', stroke: '#999' }, svg);
-    el('rect', { x: L, y: bot.y0 - 22, width: W - L - R, height: bot.y1 - bot.y0 + 22, fill: 'none', stroke: '#999' }, svg);
+    if (hasState) el('rect', { x: L, y: bot.y0 - 22, width: W - L - R, height: bot.y1 - bot.y0 + 22, fill: 'none', stroke: '#999' }, svg);
     // phase separators and labels
     for (let k = 0; k <= P; k++) {
       el('line', { x1: X(k), x2: X(k), y1: 4, y2: top.y1, stroke: '#ddd' }, svg);
-      el('line', { x1: X(k), x2: X(k), y1: bot.y0 - 22, y2: bot.y1, stroke: '#ddd' }, svg);
+      if (hasState) el('line', { x1: X(k), x2: X(k), y1: bot.y0 - 22, y2: bot.y1, stroke: '#ddd' }, svg);
       text(svg, X(k), bot.y1 + 15, String(cfg.tOf(B[k])), { 'text-anchor': 'middle', 'font-size': 11 });
     }
     cfg.phases.forEach((name, k) => {
@@ -89,8 +91,8 @@
       text(svg, L - 6, YE(v) + 4, v.toFixed(2), { 'text-anchor': 'end', 'font-size': 11 });
     });
     text(svg, 12, (top.y0 + top.y1) / 2, 'Empowerment', { transform: `rotate(-90 12 ${(top.y0 + top.y1) / 2})`, 'text-anchor': 'middle', 'font-size': 12.5, fill: INK });
-    text(svg, 12, (bot.y0 + bot.y1) / 2 - 8, 'State', { transform: `rotate(-90 12 ${(bot.y0 + bot.y1) / 2 - 8})`, 'text-anchor': 'middle', 'font-size': 12.5, fill: INK });
-    [0, cfg.stateMax / 2].forEach(v => text(svg, L - 6, YS(v) + 4, String(+v.toFixed(2)), { 'text-anchor': 'end', 'font-size': 11 }));
+    if (hasState) text(svg, 12, (bot.y0 + bot.y1) / 2 - 8, 'State', { transform: `rotate(-90 12 ${(bot.y0 + bot.y1) / 2 - 8})`, 'text-anchor': 'middle', 'font-size': 12.5, fill: INK });
+    if (hasState) [0, cfg.stateMax / 2].forEach(v => text(svg, L - 6, YS(v) + 4, String(+v.toFixed(2)), { 'text-anchor': 'end', 'font-size': 11 }));
 
     // empowerment curve
     el('path', {
@@ -179,6 +181,32 @@
         { label: 'Ant–ball dist. (m)', color: '#d62728', values: d.dist },
         { label: 'Ball speed (m/s)', color: '#2ca02c', dash: '5 3', values: d.bspd },
       ],
+    });
+  }
+
+  function initAntmaze(d) {
+    const t0 = d.t[0];
+    TrajectoryPanel({
+      id: 'traj-antmaze',
+      fps: 30,
+      emp: d.emp,
+      bounds: [190, 270, 350, 460, 640].map(t => t - t0),
+      phases: ['approach', 'junctions', 'corner', 'center again'],
+      tOf: i => d.t[i],
+      states: [],
+    });
+  }
+
+  function initPointmaze(d) {
+    const t0 = d.t[0];
+    TrajectoryPanel({
+      id: 'traj-pointmaze',
+      fps: 30,
+      emp: d.emp,
+      bounds: [60, 169, 342, 358, 430].map(t => t - t0),
+      phases: ['approach entrance', 'teleported', 'near entrance', 'teleported'],
+      tOf: i => d.t[i],
+      states: [],
     });
   }
 
@@ -338,6 +366,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    getJSON('static/data/antmaze_traj.json').then(initAntmaze);
+    getJSON('static/data/pointmaze_traj.json').then(initPointmaze);
     getJSON('static/data/antsoccer_traj.json').then(initAntsoccer);
     getJSON('static/data/cube_traj.json').then(initCube);
     getJSON('static/data/online_curves.json').then(initOnline);

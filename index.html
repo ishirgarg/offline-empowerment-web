@@ -8,7 +8,7 @@
   <meta property="og:title" content="Measuring Empowerment from Offline Data for Intrinsically Motivated Exploration">
   <meta property="og:description" content="We propose the first method for estimating empowerment from unlabeled prior data, without any environment interaction.">
   <meta property="og:image" content="static/images/antsoccer_heatmap.png">
-  <link rel="stylesheet" href="static/css/index.css?v=6">
+  <link rel="stylesheet" href="static/css/index.css?v=9">
   <script>
     window.MathJax = {
       tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -16,7 +16,7 @@
     };
   </script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.min.js"></script>
-  <script defer src="static/js/main.js?v=6"></script>
+  <script defer src="static/js/main.js?v=9"></script>
 </head>
 <body>
 
@@ -123,38 +123,57 @@
   <p>
     Because \(s^+\) is drawn from a geometric mixture over future time steps, the occupancy measures satisfy a Bellman-style recursion <a href="#ref-dayan">(Dayan, 1993)</a>:
   </p>
-  <div class="math-block">\[ p^z(s^+ \mid s, a) = (1-\gamma)\,\mathbf{1}\big(s^+ = s\big) \;+\; \gamma\,\mathbb{E}_{s' \sim P(\cdot \mid s, a)}\!\big[p^z(s^+ \mid s')\big]. \]</div>
+  <div class="math-block">\[ p^z(s^+ \mid s, a) = (1-\gamma)\,\mathbf{1}\big(s^+ = s\big) + \gamma\,\mathbb{E}_{s' \sim P(\cdot \mid s, a)}\!\big[p^z(s^+ \mid s')\big], \qquad p^z(s^+ \mid s) = \mathbb{E}_{a \sim \pi(\cdot \mid s, z)}\!\big[p^z(s^+ \mid s, a)\big]. \]</div>
   <p>
     This recursion can be used as a temporal-difference target to learn occupancy measures from off-policy transitions \((s,a,s')\), without rollouts of \(\pi\) itself.
-    To tractably model these high-dimensional distributions, we parameterize the log-occupancies as scaled negative Euclidean distances in a shared representation space of dimension \(d\):
+    We learn \(Q^z_\theta(s^+ \mid s,a) \approx p^z(s^+ \mid s,a)\) and \(V^z_\theta(s^+ \mid s) \approx p^z(s^+ \mid s)\) from transitions \((s, a, s') \sim \mathcal{D}\), paired with a random state \(s^+\) drawn uniformly from \(\mathcal{D}\).
+    Since a random \(s^+\) almost never equals \(s\), we add a second loss where \(s^+ = s\), so that its target includes the \((1-\gamma)\) term:
   </p>
-  <div class="math-block">\[ \log Q^z(s^+ \mid s,a) = -\tfrac{1}{d} \|\phi_Q(s,a,z) - \psi(s^+)\|^2, \quad \log V^z(s^+ \mid s) = -\tfrac{1}{d} \|\phi_V(s,z) - \psi(s^+)\|^2 \]</div>
+  <div class="math-block">\[ \mathcal{L}_Q = \mathbb{E}\Big[\ell\big(Q^{z}_\theta(s^+ \mid s, a),\, \gamma V^{z}_{\bar\theta}(s^+ \mid s')\big) + \ell\big(Q^{z}_\theta(s \mid s, a),\, (1-\gamma) + \gamma V^{z}_{\bar\theta}(s \mid s')\big)\Big], \]</div>
+  <div class="math-block">\[ \mathcal{L}_V = \mathbb{E}\Big[\ell\big(V^{z}_\theta(s^+ \mid s),\, \mathbb{E}_{a' \sim \pi(\cdot \mid s, z)}\big[Q^{z}_{\bar\theta}(s^+ \mid s, a')\big]\big)\Big], \]</div>
+  <p>
+    where \(\ell\) is a clipped linear exponential regression loss and \(Q_{\bar\theta}, V_{\bar\theta}\) are target networks.
+    To tractably model these high-dimensional distributions, we parameterize the log-occupancies as scaled negative Euclidean distances between learned encoders in a shared representation space of dimension \(d\):
+  </p>
+  <div class="math-block">\[ \log Q^z(s^+ \mid s,a) = -\tfrac{1}{d} \|\phi_Q(s,a,z) - \psi(s^+)\|^2, \qquad \log V^z(s^+ \mid s) = -\tfrac{1}{d} \|\phi_V(s,z) - \psi(s^+)\|^2. \]</div>
   <p>
     This formulation allows us to sample directly from the discounted state-occupancy measure as an isotropic Gaussian in the latent space \(p(\psi \mid \phi) = \mathcal{N}(\phi, \frac{d}{2}I)\), which is needed to compute the empowerment.
   </p>
 
   <h3>Policy Optimization via the Empowerment Gradient</h3>
   <p>
-    We optimize a policy \(\pi(a \mid s, z)\) to maximize its effective empowerment through the \((\pi,z)\)-modified empowerment \(\mathcal{E}_\Delta(s; \pi, z)\), which quantifies the local change in empowerment caused by changing the action distribution of skill \(z\) at \(s\).
-    Increasing this encourages the skill-conditioned policy to take actions that make its future state occupancies under different skills distinguishable:
+    Because empowerment depends only on the state, we need a way to describe how a skill's action distribution influences it.
+    We define \(\mathcal{M}^{z'}(s^+ \mid s,\pi,z)\) as the marginal modified discounted state occupancy measure, representing the distribution over \(s^+\) if skill \(z\) draws its action at \(s\) from \(\pi(\cdot \mid s, z)\) and all skills follow the current policy thereafter:
   </p>
-  <div class="math-block">\[ \pi \leftarrow \arg\max_{\pi} \; \mathbb{E}_{(s,a) \sim \mathcal{D},\, z \sim p(z)}\Big[\mathcal{E}_\Delta\big(s; \pi, z\big) - \frac{\alpha_{\text{bc}}}{2} \big\|a - \mu_\theta(s,z)\big\|^2 \Big] \]</div>
-  <p>where \(\alpha_{\text{bc}}\) is a hyperparameter that enforces a behavioral constraint.</p>
+  <div class="math-block">\[ \mathcal{M}^{z'}(s^+ \mid s,\pi,z) = \mathbf{1}\{z' = z\}\,\mathbb{E}_{a \sim \pi(\cdot \mid s, z)}\big[Q^{z'}(s^+ \mid s, a)\big] + \mathbf{1}\{z' \neq z\}\,V^{z'}(s^+ \mid s). \]</div>
+  <p>We can then define the \((\pi,z)\)-modified empowerment,</p>
+  <div class="math-block">\[ \mathcal{E}_\Delta(s; \pi, z) = \frac{1}{K} \sum_{z' \in \mathcal{Z}} \mathbb{E}_{s^+ \sim \mathcal{M}^{z'}(\cdot \mid s, \pi, z)} \left[ \log \frac{\mathcal{M}^{z'}(s^+ \mid s, \pi, z)}{\frac{1}{K} \sum_{z'' \in \mathcal{Z}} \mathcal{M}^{z''}(s^+ \mid s, \pi, z)} \right], \]</div>
+  <p>
+    which quantifies the local change in empowerment caused by changing the action distribution of skill \(z\) at \(s\).
+    Increasing this encourages the skill-conditioned policy to take actions that make its future state occupancies under different skills distinguishable.
+    Since we can sample from \(V^{z'}\) via the Gaussian parameterization above, we estimate \(\mathcal{E}_\Delta\) by importance-weighted Monte Carlo sampling. The complete policy objective is:
+  </p>
+  <div class="math-block">\[ \pi \leftarrow \arg\max_{\pi} \; \mathbb{E}_{(s,a) \sim \mathcal{D},\, z \sim p(z)}\Big[\mathcal{E}_\Delta\big(s; \pi, z\big) - \frac{\alpha_{\text{bc}}}{2} \big\|a - \mu_\theta(s,z)\big\|^2 \Big], \]</div>
+  <p>
+    where \(\mu_\theta(s,z)\) is the policy mean and \(\alpha_{\text{bc}}\) is a hyperparameter that enforces a behavioral constraint.
+    We train the \(Q\), \(V\) networks and the policy jointly, taking a gradient step on their combined losses at every iteration.
+  </p>
 
   <h3>Estimating the Empowerment</h3>
   <p>
-    Once training has converged, the learned policy \(\pi\) approximately maximizes the effective empowerment, so its effective empowerment serves as an estimate of the potential empowerment \(\mathcal{E}(s)\).
-    We compute it from the learned occupancy model \(V^z_\theta\), sampling latents \(\psi_{z,m} \sim \mathcal{N}\big(\phi_V(s,z), \tfrac{d}{2} I\big)\):
+    Once training has converged, the learned policy \(\pi\) approximately maximizes the effective empowerment, so its effective empowerment \(\tilde{\mathcal{E}}(s;\pi)\) serves as an estimate of the potential empowerment \(\mathcal{E}(s)\).
+    We compute it by substituting the learned occupancy model \(V^z_\theta\) and approximating the expectation by sampling \(M\) latents per skill, \(\psi_{z,m} \sim \mathcal{N}\big(\phi_V(s,z), \tfrac{d}{2} I\big)\):
   </p>
   <div class="math-block">\[ \hat{\mathcal{E}}(s) \;=\; \frac{1}{K} \sum_{z \in \mathcal{Z}} \frac{1}{M} \sum_{m=1}^{M} \left[ \log V^z_\theta(\psi_{z,m} \mid s) - \log \frac{1}{K} \sum_{z' \in \mathcal{Z}} V^{z'}_\theta(\psi_{z,m} \mid s) \right]. \]</div>
 </section>
 
 <section id="experiments">
   <h2>Experiments</h2>
-  <p>
-    We answer two questions: (1) Does our method recover meaningful empowerment estimates from offline data? (2) Can we use the offline empowerment estimator to improve online exploration?
-    Since computing the true empowerment over all policies is intractable in continuous environments, we evaluate the estimator qualitatively, in environments whose structure dictates where the empowerment should be high (e.g., toward the center of a maze rather than in its dead ends).
-  </p>
+  <p>We answer two questions:</p>
+  <ol>
+    <li>Does our method recover meaningful empowerment estimates from offline data?</li>
+    <li>Can we use the offline empowerment estimator to improve online exploration?</li>
+  </ol>
 
   <h3 id="maps">Offline Empowerment Plots</h3>
   <p>
@@ -179,59 +198,55 @@
   </figure>
 
   <h3 id="trajectories">Empowerment Along Trajectories</h3>
-  <p>
-    <a href="#fig-traj">Figure 2</a> shows the empowerment estimate along real dataset trajectories.
-    In <em>antsoccer</em>, empowerment rises as the ant approaches the ball, drops sharply the moment it kicks it, and stays low while the ball rolls out of reach, then climbs again as the ant walks back and dribbles, peaking just before the second kick with the ball at its feet.
-    In <em>cube</em>, empowerment rises as the gripper approaches and grasps the block.
-    Once the arm carries the block up into the air, the empowerment falls: this is because the gripper must stay closed to retain control of the block, giving the agent fewer degrees of freedom to control its future state.
-    Empowerment rises as the arm descends and releases the block; here empowerment is high because, as in <em>antsoccer</em>, the arm can choose to back off from the cube, or grab it and move it.
-  </p>
-  <figure id="fig-traj">
-    <div class="figure-pair">
-      <div class="traj" id="traj-antsoccer">
-        <video src="static/videos/antsoccer.mp4" poster="static/videos/antsoccer_poster.jpg" muted loop playsinline preload="auto"></video>
-        <svg></svg>
-        <div class="controls"><button type="button">Pause</button><span class="tval"></span></div>
-        <p class="panel-caption">(a) Ant-Soccer</p>
-      </div>
-      <div class="traj" id="traj-cube">
-        <video src="static/videos/cube.mp4" poster="static/videos/cube_poster.jpg" muted loop playsinline preload="auto"></video>
-        <svg></svg>
-        <div class="controls"><button type="button">Pause</button><span class="tval"></span></div>
-        <p class="panel-caption">(b) Cube</p>
-      </div>
+  <div class="traj-grid">
+    <div class="traj" id="traj-antmaze">
+      <p class="traj-title">AntMaze</p>
+      <video class="contain" src="static/videos/antmaze.mp4" poster="static/videos/antmaze_poster.jpg" muted loop playsinline preload="auto"></video>
+      <svg></svg>
+      <div class="controls"><button type="button">Pause</button><span class="tval"></span></div>
+      <p class="traj-desc">
+        Empowerment is high as the ant walks through the maze's corridor junctions, where it can choose between several corridors to explore next.
+        It falls as the ant walks into the bottom-left corner, where the walls leave it with far fewer futures it can reach, and climbs again once the ant walks back out toward the center of the maze.
+      </p>
     </div>
-    <figcaption>
-      <span class="fig-num">Figure 2.</span>
-      Empowerment (middle panel) recovered by our offline estimator along real dataset trajectories, alongside the underlying state (bottom); the video (top) is the rendered trajectory, and the vertical line marks the current frame.
-      (a) <em>antsoccer</em>: the ant walks up to the ball, kicks it away, walks back, dribbles it, and kicks it again.
-      (b) <em>cube-single</em>: one cycle in which the arm grabs the block, picks it up, and places it down in a new spot.
-      The \(x\)-axis has timesteps at the phase boundaries as tick labels. Click or drag on a plot to seek.
-    </figcaption>
-  </figure>
-
+    <div class="traj" id="traj-pointmaze">
+      <p class="traj-title">PointMaze-Teleport</p>
+      <video class="contain" src="static/videos/pointmaze.mp4" poster="static/videos/pointmaze_poster.jpg" muted loop playsinline preload="auto"></video>
+      <svg></svg>
+      <div class="controls"><button type="button">Pause</button><span class="tval"></span></div>
+      <p class="traj-desc">
+        Empowerment collapses as the point approaches a teleporter entrance: once it steps in, it is sent to a random exit, so it has almost no control over its next state.
+        It jumps back up the moment the point is teleported and regains control, then rises as the point moves into the open maze.
+        When the point is teleported to an exit right next to another entrance, empowerment stays low until it is teleported again.
+      </p>
+    </div>
+    <div class="traj" id="traj-antsoccer">
+      <p class="traj-title">Ant-Soccer</p>
+      <video src="static/videos/antsoccer.mp4" poster="static/videos/antsoccer_poster.jpg" muted loop playsinline preload="auto"></video>
+      <svg></svg>
+      <div class="controls"><button type="button">Pause</button><span class="tval"></span></div>
+      <p class="traj-desc">
+        Empowerment rises as the ant approaches the ball, drops sharply the moment it kicks it, and stays low while the ball rolls out of reach, then climbs again as the ant walks back and dribbles, peaking just before the second kick with the ball at its feet.
+      </p>
+    </div>
+    <div class="traj" id="traj-cube">
+      <p class="traj-title">Cube</p>
+      <video src="static/videos/cube.mp4" poster="static/videos/cube_poster.jpg" muted loop playsinline preload="auto"></video>
+      <svg></svg>
+      <div class="controls"><button type="button">Pause</button><span class="tval"></span></div>
+      <p class="traj-desc">
+        Empowerment rises as the gripper approaches and grasps the block.
+        Once the arm carries the block up into the air, the empowerment falls: this is because the gripper must stay closed to retain control of the block, giving the agent fewer degrees of freedom to control its future state.
+        Empowerment rises as the arm descends and releases the block; here empowerment is high because the arm can choose to back off from the cube, or grab it and move it.
+      </p>
+    </div>
+  </div>
 
   <h3 id="online">Online Exploration</h3>
   <p>
-    We also use the empowerment estimator \(\hat{\mathcal{E}}(s)\), trained on \(\mathcal{D}\) and then frozen, to guide exploration when an agent later solves online, sparse-reward, goal-reaching tasks in the same environment.
-    Our online agents are built on contrastive RL (CRL) <a href="#ref-crl">(Eysenbach et al., 2022)</a>, a goal-conditioned actor-critic, and every online agent is trained with Reinforcement Learning with Prior Data (RLPD) <a href="#ref-rlpd">(Ball et al., 2023)</a>.
-  </p>
-  <p>
-    <strong>Empowerment bonus.</strong>
-    A naive way to use empowerment is to add it as an additional reward; however, this can have the undesired consequence of keeping the policy from leaving high-empowerment states.
-    Instead, we would like the policy to visit high-empowerment states more often so it can explore around them, but not be penalized for leaving those high-empowerment states and continuing its trajectory into other parts of the state space.
-    Consequently, we train a network \(B_\omega(s,a)\) to predict the <em>maximum</em> empowerment reached anywhere along the trajectory containing the transition \((s,a)\):
-  </p>
-  <div class="math-block">\[ \min_\omega \; \mathbb{E}_{\tau,\, t}\Big[\big(B_\omega(s_t, a_t) - \max_{0 \le k \le T} \hat{\mathcal{E}}(s_k)\big)^2\Big]. \]</div>
-  <p>
-    Since the max is taken over both the future <em>and</em> the history, leaving a high-empowerment state is not penalized, while actions that lead to one are rewarded.
-    The policy then maximizes
-  </p>
-  <div class="math-block">\[ \mathbb{E}_{(s,g),\; a \sim \pi(\cdot \mid s, g)}\big[f(s,a,g) + \beta\, B_\omega(s,a) - \alpha_{\text{ent}} \log \pi(a \mid s, g)\big], \]</div>
-  <p>
-    where \(\beta\) is the bonus weight, and \(\alpha_{\text{ent}}\) is the automatically tuned entropy temperature.
-    Because our bonus only adds a term to the policy objective, it can be combined with other exploration methods.
-    We test the effect of combining our empowerment bonus with RND <a href="#ref-rnd">(Burda et al., 2019)</a> and also adding it to the SUPE <a href="#ref-supe">(Wilcoxson et al., 2025)</a> high-level policy loss.
+    We use the empowerment estimator \(\hat{\mathcal{E}}(s)\), trained on \(\mathcal{D}\) and then frozen, to guide exploration on online, sparse-reward, goal-reaching tasks in the same environment.
+    We add an empowerment bonus to the policy objective of a contrastive RL (CRL) agent <a href="#ref-crl">(Eysenbach et al., 2022)</a>: a network \(B_\omega(s,a)\) predicts the <em>maximum</em> empowerment reached anywhere along the trajectory containing \((s,a)\), so actions that lead to high-empowerment states are rewarded, while leaving them is not penalized.
+    Because the bonus only adds a term to the policy objective, it can also be combined with other exploration methods such as RND <a href="#ref-rnd">(Burda et al., 2019)</a> and SUPE <a href="#ref-supe">(Wilcoxson et al., 2025)</a>.
   </p>
   <figure id="fig-online">
     <div class="toggle" id="online-toggle">
@@ -241,16 +256,13 @@
     <div class="online-grid" id="online-grid"></div>
     <div class="legend" id="online-legend"></div>
     <figcaption>
-      <span class="fig-num">Figure 3.</span>
+      <span class="fig-num">Figure 2.</span>
       Online success rate on each task (top line of each panel title) with each offline dataset (bottom line), for CRL, RND, and SUPE with and without our empowerment bonus. We use 5 seeds.
       Shaded regions show one standard error; click a legend entry to hide it.
     </figcaption>
   </figure>
   <p>
-    On <em>cube-single-play</em>, <em>antmaze-medium-navigate</em>, and <em>pointmaze-teleport-stitch</em>, adding the empowerment bonus improves over baseline CRL, enabling faster learning and higher performance.
-    Our method can also be combined with existing exploration methods.
-    Adding the empowerment to CRL + RND leads to improved performance on <em>cube-single</em>, <em>antmaze-medium</em>, and <em>pointmaze-teleport</em> over RND alone.
-    Adding it to SUPE on <em>cube</em> and <em>antmaze</em> speeds up learning.
+    Adding the empowerment bonus improves over baseline CRL on all three tasks, enabling faster learning and higher performance. It also improves over RND alone when combined with it, and speeds up learning when added to SUPE on <em>cube</em> and <em>antmaze</em>.
   </p>
 </section>
 
@@ -276,7 +288,6 @@
 
 <section id="references">
   <h2>References</h2>
-  <p id="ref-rlpd">Ball, P. J., Smith, L., Kostrikov, I., and Levine, S. Efficient Online Reinforcement Learning With Offline Data. 2023.</p>
   <p id="ref-rnd">Burda, Y., Edwards, H., Storkey, A., and Klimov, O. Exploration by Random Network Distillation. 2019.</p>
   <p id="ref-dayan">Dayan, P. Improving Generalization for Temporal Difference Learning: The Successor Representation. 1993.</p>
   <p id="ref-crl">Eysenbach, B., Zhang, T., Levine, S., and Salakhutdinov, R. Contrastive Learning as Goal-Conditioned Reinforcement Learning. 2022.</p>

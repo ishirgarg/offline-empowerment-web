@@ -76,7 +76,12 @@ figcaption .fig-num { font-weight: bold; color: #555; }
 .figure-pair > * { min-width: 0; }
 
 /* Trajectory panels: video on top, synced empowerment plot below */
-.traj video { border-radius: 4px; background: #1b2236; aspect-ratio: 840 / 680; object-fit: cover; }
+.traj-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.2em 1.8em; align-items: start; margin: 1.5em 0 2em; }
+.traj { min-width: 0; }
+.traj-title { margin: 0 0 0.4em; text-align: center; font-weight: bold; color: #444; }
+.traj-desc { font-size: 0.92em; color: #555; margin: 0.6em 0 0; }
+.traj video { display: block; width: 100%; height: auto; border-radius: 4px; background: #1b2236; aspect-ratio: 840 / 680; object-fit: cover; }
+.traj video.contain { object-fit: contain; background: #fff; }
 .traj svg { display: block; width: 100%; height: auto; margin-top: 0.4em; touch-action: none; cursor: ew-resize; user-select: none; font-family: inherit; }
 .traj .controls { display: flex; align-items: center; gap: 0.6em; margin-top: 0.3em; font-size: 0.85em; color: #666; }
 .traj .controls button {
@@ -133,7 +138,7 @@ pre {
   .abstract { margin: 1em 0; text-align: left; }
   .theorem, .algo { margin: 1.25em 0; padding-left: 0.9em; padding-right: 0.9em; }
   .algo .cm { display: none; }
-  .maps-row, .figure-pair, .online-grid { grid-template-columns: 1fr; }
+  .maps-row, .figure-pair, .online-grid, .traj-grid { grid-template-columns: 1fr; }
   figcaption { width: 100%; }
   .authors { font-size: 1.08em; gap: 0.3em 1em; }
   .affiliations { font-size: 1em; }
