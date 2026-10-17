@@ -8,7 +8,7 @@
   <meta property="og:title" content="Measuring Empowerment from Offline Data for Intrinsically Motivated Exploration">
   <meta property="og:description" content="We propose the first method for estimating empowerment from unlabeled prior data, without any environment interaction.">
   <meta property="og:image" content="static/images/antsoccer_heatmap.png">
-  <link rel="stylesheet" href="static/css/index.css?v=5">
+  <link rel="stylesheet" href="static/css/index.css?v=6">
   <script>
     window.MathJax = {
       tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -16,7 +16,7 @@
     };
   </script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.min.js"></script>
-  <script defer src="static/js/main.js?v=5"></script>
+  <script defer src="static/js/main.js?v=6"></script>
 </head>
 <body>
 
@@ -72,28 +72,17 @@
   <h2>Introduction</h2>
   <p>
     Online exploration is a challenging yet central problem in reinforcement learning, where the agent must traverse the environment to seek out novel states with potentially high reward values.
-    Previous methods tend to place equal weights across all states in the prior, where the agent is optimized to visit all of these states until all of them have been visited.
-    But without any prior, the agent must visit all states, increasing the sample-complexity.
+    Previous methods tend to place equal weights across all states in the prior.
     This is suboptimal as some states naturally grant the agent more control over what it could do (e.g., picking up a key lets the agent open a door to a new room).
-  </p>
-  <p>
-    A natural way to characterize the idea above is to consider empowerment <a href="#ref-klyubin">(Klyubin et al., 2005)</a>, a metric that measures to what degree an agent can influence its future states via its actions.
-    States with high empowerment have many distinct future outcomes that the agent can achieve by taking distinct sequences of actions.
-    Because these high-empowerment states have more future outcomes, it seems reasonable to explore more around these states as an agent has the potential to discover more future outcomes or behaviors.
-    Conversely, in low-empowerment states, there is very little that an agent can do to influence its future outcome, so it should spend less time exploring these regions of the state space as there is less strategic value to be gained.
+    A natural way to characterize this idea is to consider empowerment <a href="#ref-klyubin">(Klyubin et al., 2005)</a>, a metric that measures to what degree an agent can influence its future states via its actions.
+    Because high-empowerment states have more future outcomes, it seems reasonable to explore more around these states as an agent has the potential to discover more future outcomes or behaviors.
   </p>
   <p>
     Luckily, in many practical environments, we have prior data in the form of unlabeled trajectories.
-    Ideally, we would like to use the prior data to inform us how to explore online, but estimating empowerment purely from offline data is difficult: existing empowerment estimators rely on online samples where a skill-conditioned agent must interact with the environment during the optimization.
-    Furthermore, adapting online methods to the offline setting by simply regularizing the policy as is typical in the offline RL literature does not work (<a href="#baselines">Figure 3</a>).
-    Existing empowerment estimators look at whether the outcomes achieved by a policy align with its intentions; however, offline, we do not know the policy's intention.
+    But estimating empowerment purely from offline data is difficult: existing empowerment estimators rely on online samples where a skill-conditioned agent must interact with the environment during the optimization.
     <strong>How can we learn empowerment from offline data to improve online exploration?</strong>
-  </p>
-  <p>
-    In this work, we provide a novel algorithm for learning empowerment purely from <em>offline data</em>, without additional environment interaction.
     Our key contribution is an offline estimator of empowerment: by learning an empowerment-maximizing policy in tandem with its discounted state occupancy, we can extract an estimator of the empowerment from prior data alone.
-    We show that our method produces qualitatively accurate empowerment maps, correctly identifying which states admit the most diverse future outcomes.
-    We further demonstrate that the offline-extracted empowerment estimate can be used to improve exploration in online tasks.
+    We show that our method produces qualitatively accurate empowerment maps, and that the offline-extracted empowerment estimate can be used to improve exploration in online tasks.
   </p>
 </section>
 
@@ -132,17 +121,12 @@
 
   <h3>Learning the Occupancy Measure</h3>
   <p>
-    To evaluate effective empowerment offline, we must estimate the distribution of future states without environment interactions.
     Because \(s^+\) is drawn from a geometric mixture over future time steps, the occupancy measures satisfy a Bellman-style recursion <a href="#ref-dayan">(Dayan, 1993)</a>:
   </p>
   <div class="math-block">\[ p^z(s^+ \mid s, a) = (1-\gamma)\,\mathbf{1}\big(s^+ = s\big) \;+\; \gamma\,\mathbb{E}_{s' \sim P(\cdot \mid s, a)}\!\big[p^z(s^+ \mid s')\big]. \]</div>
   <p>
     This recursion can be used as a temporal-difference target to learn occupancy measures from off-policy transitions \((s,a,s')\), without rollouts of \(\pi\) itself.
-    Because the empowerment-maximizing policy differs from the behavior policy, these sampled futures are not technically samples from \(p^z(\cdot \mid s, a)\), but the recursive backup allows us to still learn these quantities.
-  </p>
-  <p>
-    To tractably model these high-dimensional distributions, we project states and actions into a shared representation space of dimension \(d\).
-    We define non-linear encoders \(\phi_Q(s, a, z)\), \(\phi_V(s, z)\), and \(\psi(s^+)\), and parameterize the log-occupancies as scaled negative Euclidean distances:
+    To tractably model these high-dimensional distributions, we parameterize the log-occupancies as scaled negative Euclidean distances in a shared representation space of dimension \(d\):
   </p>
   <div class="math-block">\[ \log Q^z(s^+ \mid s,a) = -\tfrac{1}{d} \|\phi_Q(s,a,z) - \psi(s^+)\|^2, \quad \log V^z(s^+ \mid s) = -\tfrac{1}{d} \|\phi_V(s,z) - \psi(s^+)\|^2 \]</div>
   <p>
@@ -151,46 +135,18 @@
 
   <h3>Policy Optimization via the Empowerment Gradient</h3>
   <p>
-    Now that we can learn and sample from the state occupancies, we optimize a policy \(\pi(a \mid s, z)\) to maximize its effective empowerment.
-    We define the \((\pi,z)\)-modified empowerment \(\mathcal{E}_\Delta(s; \pi, z)\), which quantifies the local change in empowerment caused by changing the action distribution of skill \(z\) at \(s\).
-    Increasing this encourages the skill-conditioned policy to take actions that make its future state occupancies under different skills distinguishable.
-    The complete policy objective is:
+    We optimize a policy \(\pi(a \mid s, z)\) to maximize its effective empowerment through the \((\pi,z)\)-modified empowerment \(\mathcal{E}_\Delta(s; \pi, z)\), which quantifies the local change in empowerment caused by changing the action distribution of skill \(z\) at \(s\).
+    Increasing this encourages the skill-conditioned policy to take actions that make its future state occupancies under different skills distinguishable:
   </p>
   <div class="math-block">\[ \pi \leftarrow \arg\max_{\pi} \; \mathbb{E}_{(s,a) \sim \mathcal{D},\, z \sim p(z)}\Big[\mathcal{E}_\Delta\big(s; \pi, z\big) - \frac{\alpha_{\text{bc}}}{2} \big\|a - \mu_\theta(s,z)\big\|^2 \Big] \]</div>
-  <p>
-    where \(\alpha_{\text{bc}}\) is a hyperparameter that enforces a behavioral constraint.
-    We train the Q, V networks and the policy jointly, taking a gradient step on their combined losses at every iteration.
-  </p>
+  <p>where \(\alpha_{\text{bc}}\) is a hyperparameter that enforces a behavioral constraint.</p>
 
   <h3>Estimating the Empowerment</h3>
   <p>
-    Once training has converged, the learned policy \(\pi\) approximately maximizes the effective empowerment, so its effective empowerment \(\tilde{\mathcal{E}}(s;\pi)\) serves as an estimate of the potential empowerment \(\mathcal{E}(s)\).
-    We compute it by substituting the learned occupancy model \(V^z_\theta\) and approximating the expectation by sampling latents from its Gaussian parameterization:
+    Once training has converged, the learned policy \(\pi\) approximately maximizes the effective empowerment, so its effective empowerment serves as an estimate of the potential empowerment \(\mathcal{E}(s)\).
+    We compute it from the learned occupancy model \(V^z_\theta\), sampling latents \(\psi_{z,m} \sim \mathcal{N}\big(\phi_V(s,z), \tfrac{d}{2} I\big)\):
   </p>
-  <div class="math-block">\[ \hat{\mathcal{E}}(s) \;=\; \frac{1}{K} \sum_{z \in \mathcal{Z}} \frac{1}{M} \sum_{m=1}^{M} \left[ \log V^z_\theta(\psi_{z,m} \mid s) - \log \frac{1}{K} \sum_{z' \in \mathcal{Z}} V^{z'}_\theta(\psi_{z,m} \mid s) \right], \]</div>
-  <p>where \(\psi_{z,m} \sim \mathcal{N}\big(\phi_V(s,z), \tfrac{d}{2} I\big)\) are \(M\) latent samples per skill.</p>
-
-  <div class="algo">
-    <div class="algo-title">Algorithm 1: Offline Empowerment Estimation</div>
-    <div><b>Require:</b> Offline dataset \(\mathcal{D}\) of transitions \((s, a, s')\); number of skills \(K\); discount \(\gamma\); behavioral constraint coefficient \(\alpha_{\text{bc}}\); Polyak rate \(\tau\)</div>
-    <ol>
-      <li>Initialize occupancy networks \(Q_\theta, V_\theta\), target networks \(Q_{\bar\theta} \gets Q_\theta\), \(V_{\bar\theta} \gets V_\theta\), and policy \(\pi(a \mid s, z)\)</li>
-      <li><b>for</b> each training step <b>do</b>
-        <ol style="list-style:none;padding-left:1.2em">
-          <li>Sample a batch of transitions \((s, a, s') \sim \mathcal{D}\)</li>
-          <li>Sample a random state \(s^+ \sim \mathcal{D}\) and a skill \(z \sim \mathrm{Unif}\{1, \dots, K\}\) for each transition</li>
-          <li>Compute the occupancy losses \(\mathcal{L}_Q = \mathcal{L}^{\mathrm{boot}}_Q + \mathcal{L}^{\mathrm{self}}_Q\) and \(\mathcal{L}_V\)</li>
-          <li>Sample latent futures \(\psi_{z',m} \sim \mathcal{N}\big(\phi_V(s, z'), \tfrac{d}{2} I\big)\) for each \(z' \in \mathcal{Z}\), \(m = 1, \dots, M\)</li>
-          <li>Sample actions \(a_m \sim \pi(\cdot \mid s, z)\) with the reparameterization trick</li>
-          <li>Estimate \(\mathcal{E}_\Delta(s; \pi, z)\), averaging over the samples</li>
-          <li>Compute the policy loss \(\mathcal{L}_\pi\)</li>
-          <li>Take one gradient step on \(\mathcal{L}_Q + \mathcal{L}_V + \mathcal{L}_\pi\)</li>
-          <li>\(\bar\theta \gets \tau \theta + (1 - \tau)\bar\theta\) <span class="cm">Polyak update of \(Q_{\bar\theta}, V_{\bar\theta}\)</span></li>
-        </ol>
-      </li>
-      <li><b>return</b> \(\hat{\mathcal{E}}(s)\) computed from \(V_\theta\)</li>
-    </ol>
-  </div>
+  <div class="math-block">\[ \hat{\mathcal{E}}(s) \;=\; \frac{1}{K} \sum_{z \in \mathcal{Z}} \frac{1}{M} \sum_{m=1}^{M} \left[ \log V^z_\theta(\psi_{z,m} \mid s) - \log \frac{1}{K} \sum_{z' \in \mathcal{Z}} V^{z'}_\theta(\psi_{z,m} \mid s) \right]. \]</div>
 </section>
 
 <section id="experiments">
@@ -254,24 +210,6 @@
     </figcaption>
   </figure>
 
-  <h3 id="baselines">Qualitative Comparison to Baselines</h3>
-  <p>
-    Our method is the first to learn empowerment in continuous environments from offline data, so there are no direct baselines to compare to; instead, we adapt four existing online empowerment estimators to the offline setting.
-    <a href="#fig-baselines">Figure 3</a> shows \(\hat{\mathcal{E}}(s)\) recovered by these baselines. None recovers a comparable map.
-    <strong>DADS-Empowerment</strong> saturates at its ceiling of \(\log K\) almost everywhere; <strong>CF-Empowerment</strong> learns a reasonable estimate, but is noisy and only captures the coarser trends; <strong>CF-FlowBC-Empowerment</strong> also fails.
-    <strong>DV-Empowerment</strong>, whose bound is known to suffer from high variance <a href="#ref-song">(Song &amp; Ermon, 2020)</a>, is virtually unbounded.
-  </p>
-  <figure id="fig-baselines" class="baseline-stack">
-    <p class="row-label">AntMaze</p>
-    <img src="static/images/baselines_antmaze_medium_navigate.jpg" alt="Baseline empowerment maps on antmaze-medium-navigate">
-    <p class="row-label">Ant-Soccer</p>
-    <img src="static/images/baselines_antsoccer_arena_navigate.jpg" alt="Baseline empowerment maps on antsoccer-arena-navigate">
-    <figcaption>
-      <span class="fig-num">Figure 3.</span>
-      Empowerment maps for our method and the four baselines, on <em>antmaze-medium-navigate</em> (top) and <em>antsoccer-arena-navigate</em> with the ball (circled in white) fixed off-center (bottom).
-      DADS is skill-empowerment; CF, CF-FlowBC, and DV are action-empowerment.
-    </figcaption>
-  </figure>
 
   <h3 id="online">Online Exploration</h3>
   <p>
@@ -303,15 +241,16 @@
     <div class="online-grid" id="online-grid"></div>
     <div class="legend" id="online-legend"></div>
     <figcaption>
-      <span class="fig-num">Figure 4.</span>
+      <span class="fig-num">Figure 3.</span>
       Online success rate on each task (top line of each panel title) with each offline dataset (bottom line), for CRL, RND, and SUPE with and without our empowerment bonus. We use 5 seeds.
       Shaded regions show one standard error; click a legend entry to hide it.
     </figcaption>
   </figure>
   <p>
-    On <em>cube-single-play</em> and <em>pointmaze-teleport-stitch</em>, adding the empowerment bonus improves over baseline CRL, enabling faster learning and higher performance.
-    On <em>antsoccer-arena-navigate</em>, our method still performs on par with CRL and does not hurt performance.
-    Our method can also be combined with existing exploration methods: adding the empowerment to CRL + RND leads to improved performance on <em>cube-single</em> and <em>pointmaze-teleport</em> over RND alone.
+    On <em>cube-single-play</em>, <em>antmaze-medium-navigate</em>, and <em>pointmaze-teleport-stitch</em>, adding the empowerment bonus improves over baseline CRL, enabling faster learning and higher performance.
+    Our method can also be combined with existing exploration methods.
+    Adding the empowerment to CRL + RND leads to improved performance on <em>cube-single</em>, <em>antmaze-medium</em>, and <em>pointmaze-teleport</em> over RND alone.
+    Adding it to SUPE on <em>cube</em> and <em>antmaze</em> speeds up learning.
   </p>
 </section>
 
@@ -343,7 +282,6 @@
   <p id="ref-crl">Eysenbach, B., Zhang, T., Levine, S., and Salakhutdinov, R. Contrastive Learning as Goal-Conditioned Reinforcement Learning. 2022.</p>
   <p id="ref-gregor">Gregor, K., Rezende, D. J., and Wierstra, D. Variational Intrinsic Control. 2017.</p>
   <p id="ref-klyubin">Klyubin, A. S., Polani, D., and Nehaniv, C. L. Empowerment: A Universal Agent-Centric Measure of Control. 2005.</p>
-  <p id="ref-song">Song, J. and Ermon, S. Understanding the Limitations of Variational Mutual Information Estimators. 2020.</p>
   <p id="ref-supe">Wilcoxson, M., Li, Q., Frans, K., and Levine, S. Leveraging Skills From Unlabeled Prior Data for Efficient Online Exploration. 2025.</p>
 </section>
 
