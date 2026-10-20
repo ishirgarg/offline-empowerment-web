@@ -30,6 +30,16 @@
     return out;
   }
 
+  // Plasma colormap (low = purple, high = yellow), trimmed so the low end stays visible on dark scenes.
+  const PLASMA = ['#7201a8', '#9c179e', '#bd3786', '#d8576b', '#ed7953', '#fb9f3a', '#fdca26', '#f0f921'];
+  function empColor(t) {
+    t = Math.min(1, Math.max(0, t)) * (PLASMA.length - 1);
+    const k = Math.min(PLASMA.length - 2, Math.floor(t)), f = t - k;
+    const a = PLASMA[k], b = PLASMA[k + 1];
+    const ch = (c, j) => parseInt(c.slice(1 + 2 * j, 3 + 2 * j), 16);
+    return 'rgb(' + [0, 1, 2].map(j => Math.round(ch(a, j) + (ch(b, j) - ch(a, j)) * f)).join(',') + ')';
+  }
+
   /* ------------------------------------------------------------------ */
   /* Trajectory video + synced empowerment plot                          */
   /* ------------------------------------------------------------------ */
@@ -68,6 +78,58 @@
     const yLo = eMin - pad, yHi = eMax + pad;
     const YE = v => top.y1 - ((v - yLo) / (yHi - yLo)) * (top.y1 - top.y0);
     const YS = v => bot.y1 - (Math.min(v, cfg.stateMax) / cfg.stateMax) * (bot.y1 - bot.y0);
+    const colorOf = v => empColor((v - eMin) / (eMax - eMin));
+
+    // Path overlay on the video: the agent's trail so far, colored by empowerment.
+    let trail = null;
+    if (cfg.px) {
+      const stage = document.createElement('div');
+      stage.className = 'stage';
+      video.parentNode.insertBefore(stage, video);
+      stage.appendChild(video);
+      const [fw, fh] = cfg.frame;
+      const ov = el('svg', {
+        class: 'overlay', viewBox: `0 0 ${fw} ${fh}`,
+        preserveAspectRatio: video.classList.contains('contain') ? 'xMidYMid meet' : 'xMidYMid slice',
+      }, stage);
+      const breaks = new Set(cfg.breaks || []);
+      const lw = fw / 150;
+      const jumps = [...breaks].map(b => [b, el('line', {
+        x1: cfg.px[b - 1][0], y1: cfg.px[b - 1][1], x2: cfg.px[b][0], y2: cfg.px[b][1], visibility: 'hidden',
+        stroke: 'rgba(255,255,255,0.8)', 'stroke-width': lw * 0.5, 'stroke-dasharray': `${lw * 1.2} ${lw * 1.4}`, 'stroke-linecap': 'round',
+      }, ov)]);
+      const halo = el('g', { stroke: 'rgba(255,255,255,0.9)', 'stroke-width': lw + 3.2, 'stroke-linecap': 'round' }, ov);
+      const line = el('g', { 'stroke-width': lw, 'stroke-linecap': 'round' }, ov);
+      const dots = el('g', { stroke: '#fff', 'stroke-width': lw * 0.45 }, ov);
+      const segs = [null], marks = [];
+      for (let i = 1; i < n; i++) {
+        if (breaks.has(i)) { segs.push(null); continue; }
+        const [x1, y1] = cfg.px[i - 1], [x2, y2] = cfg.px[i];
+        const c = colorOf((cfg.emp[i - 1] + cfg.emp[i]) / 2);
+        segs.push([
+          el('line', { x1, y1, x2, y2, visibility: 'hidden' }, halo),
+          el('line', { x1, y1, x2, y2, stroke: c, visibility: 'hidden' }, line),
+        ]);
+      }
+      const every = Math.round(cfg.fps / 2);
+      for (let i = 0; i < n; i += every) {
+        marks.push([i, el('circle', { cx: cfg.px[i][0], cy: cfg.px[i][1], r: lw * 1.55, fill: colorOf(cfg.emp[i]), visibility: 'hidden' }, dots)]);
+      }
+      const headHalo = el('circle', { r: lw * 2.8, fill: 'none', stroke: '#fff', 'stroke-width': lw * 1.4 }, ov);
+      const head = el('circle', { r: lw * 2.8, fill: 'none', 'stroke-width': lw * 0.75 }, ov);
+      let upTo = 0;
+      trail = i => {
+        const set = (a, b, vis) => {
+          for (let k = a; k <= b; k++) if (segs[k]) segs[k].forEach(e => e.setAttribute('visibility', vis));
+        };
+        if (i > upTo) set(upTo + 1, i, 'visible'); else if (i < upTo) set(i + 1, upTo, 'hidden');
+        upTo = i;
+        marks.forEach(([k, c]) => c.setAttribute('visibility', k <= i ? 'visible' : 'hidden'));
+        jumps.forEach(([k, l]) => l.setAttribute('visibility', k <= i ? 'visible' : 'hidden'));
+        [headHalo, head].forEach(c => { c.setAttribute('cx', cfg.px[i][0]); c.setAttribute('cy', cfg.px[i][1]); });
+        head.setAttribute('stroke', colorOf(cfg.emp[i]));
+      };
+    }
 
     // frames around the two panels
     el('rect', { x: L, y: 4, width: W - L - R, height: top.y1 - 4, fill: 'none', stroke: '#999' }, svg);
@@ -94,11 +156,25 @@
     if (hasState) text(svg, 12, (bot.y0 + bot.y1) / 2 - 8, 'State', { transform: `rotate(-90 12 ${(bot.y0 + bot.y1) / 2 - 8})`, 'text-anchor': 'middle', 'font-size': 12.5, fill: INK });
     if (hasState) [0, cfg.stateMax / 2].forEach(v => text(svg, L - 6, YS(v) + 4, String(+v.toFixed(2)), { 'text-anchor': 'end', 'font-size': 11 }));
 
-    // empowerment curve
-    el('path', {
-      d: cfg.emp.map((v, i) => (i ? 'L' : 'M') + X(warp(i)).toFixed(1) + ' ' + YE(v).toFixed(1)).join(''),
-      fill: 'none', stroke: '#1f4e79', 'stroke-width': 1.8, 'stroke-linejoin': 'round',
-    }, svg);
+    // empowerment curve (colored by value when the video shows the matching colored trail)
+    if (cfg.px) {
+      const defs = el('defs', {}, svg);
+      const grad = el('linearGradient', { id: cfg.id + '-cbar', x1: 0, y1: 1, x2: 0, y2: 0 }, defs);
+      PLASMA.forEach((c, k) => el('stop', { offset: k / (PLASMA.length - 1), 'stop-color': c }, grad));
+      el('rect', { x: L - 3, y: YE(eMax), width: 6, height: YE(eMin) - YE(eMax), rx: 1.5, fill: `url(#${cfg.id}-cbar)` }, svg);
+      const g = el('g', { 'stroke-width': 2.2, 'stroke-linecap': 'round' }, svg);
+      for (let i = 1; i < n; i++) {
+        el('line', {
+          x1: X(warp(i - 1)).toFixed(1), y1: YE(cfg.emp[i - 1]).toFixed(1), x2: X(warp(i)).toFixed(1), y2: YE(cfg.emp[i]).toFixed(1),
+          stroke: colorOf((cfg.emp[i - 1] + cfg.emp[i]) / 2),
+        }, g);
+      }
+    } else {
+      el('path', {
+        d: cfg.emp.map((v, i) => (i ? 'L' : 'M') + X(warp(i)).toFixed(1) + ' ' + YE(v).toFixed(1)).join(''),
+        fill: 'none', stroke: '#1f4e79', 'stroke-width': 1.8, 'stroke-linejoin': 'round',
+      }, svg);
+    }
     // state curves + legend
     let lx = L + 8;
     cfg.states.forEach(s => {
@@ -124,6 +200,7 @@
       cursor.setAttribute('x1', x); cursor.setAttribute('x2', x);
       dot.setAttribute('cx', x); dot.setAttribute('cy', YE(cfg.emp[i]));
       tval.textContent = `t = ${cfg.tOf(i)}   empowerment = ${cfg.emp[i].toFixed(3)}`;
+      if (trail) trail(i);
     }
     function frameNow() {
       return Math.max(0, Math.min(n - 1, Math.floor(video.currentTime * cfg.fps + 1e-3)));
@@ -188,6 +265,7 @@
     const t0 = d.t[0];
     TrajectoryPanel({
       id: 'traj-antmaze',
+      px: d.px, frame: d.frame, breaks: d.breaks,
       fps: 30,
       emp: d.emp,
       bounds: [190, 270, 350, 460, 640].map(t => t - t0),
@@ -201,6 +279,7 @@
     const t0 = d.t[0];
     TrajectoryPanel({
       id: 'traj-pointmaze',
+      px: d.px, frame: d.frame, breaks: d.breaks,
       fps: 30,
       emp: d.emp,
       bounds: [60, 169, 342, 358, 430].map(t => t - t0),
