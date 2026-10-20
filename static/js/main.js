@@ -80,9 +80,10 @@
     const YS = v => bot.y1 - (Math.min(v, cfg.stateMax) / cfg.stateMax) * (bot.y1 - bot.y0);
     const colorOf = v => empColor((v - eMin) / (eMax - eMin));
 
-    // Path overlay on the video: the agent's trail so far, colored by empowerment.
+    // Path overlay on the video: the agent's trail so far, colored by empowerment. The agent's
+    // recorded 3D positions are projected with the camera that rendered each frame.
     let trail = null;
-    if (cfg.px) {
+    if (cfg.pts) {
       const stage = document.createElement('div');
       stage.className = 'stage';
       video.parentNode.insertBefore(stage, video);
@@ -92,11 +93,16 @@
         class: 'overlay', viewBox: `0 0 ${fw} ${fh}`,
         preserveAspectRatio: video.classList.contains('contain') ? 'xMidYMid meet' : 'xMidYMid slice',
       }, stage);
+      const moving = Array.isArray(cfg.cam[0]);
+      const project = P => cfg.pts.map(([x, y, z]) => {
+        const w = P[8] * x + P[9] * y + P[10] * z + P[11];
+        return [(P[0] * x + P[1] * y + P[2] * z + P[3]) / w, (P[4] * x + P[5] * y + P[6] * z + P[7]) / w];
+      });
       const breaks = new Set(cfg.breaks || []);
       const lw = fw / 150;
       const jumps = [...breaks].map(b => [b, el('line', {
-        x1: cfg.px[b - 1][0], y1: cfg.px[b - 1][1], x2: cfg.px[b][0], y2: cfg.px[b][1], visibility: 'hidden',
-        stroke: 'rgba(255,255,255,0.8)', 'stroke-width': lw * 0.5, 'stroke-dasharray': `${lw * 1.2} ${lw * 1.4}`, 'stroke-linecap': 'round',
+        visibility: 'hidden', stroke: 'rgba(255,255,255,0.8)', 'stroke-width': lw * 0.5,
+        'stroke-dasharray': `${lw * 1.2} ${lw * 1.4}`, 'stroke-linecap': 'round',
       }, ov)]);
       const halo = el('g', { stroke: 'rgba(255,255,255,0.9)', 'stroke-width': lw + 3.2, 'stroke-linecap': 'round' }, ov);
       const line = el('g', { 'stroke-width': lw, 'stroke-linecap': 'round' }, ov);
@@ -104,21 +110,32 @@
       const segs = [null], marks = [];
       for (let i = 1; i < n; i++) {
         if (breaks.has(i)) { segs.push(null); continue; }
-        const [x1, y1] = cfg.px[i - 1], [x2, y2] = cfg.px[i];
         const c = colorOf((cfg.emp[i - 1] + cfg.emp[i]) / 2);
-        segs.push([
-          el('line', { x1, y1, x2, y2, visibility: 'hidden' }, halo),
-          el('line', { x1, y1, x2, y2, stroke: c, visibility: 'hidden' }, line),
-        ]);
+        segs.push([el('line', { visibility: 'hidden' }, halo), el('line', { stroke: c, visibility: 'hidden' }, line)]);
       }
       const every = Math.round(cfg.fps / 2);
       for (let i = 0; i < n; i += every) {
-        marks.push([i, el('circle', { cx: cfg.px[i][0], cy: cfg.px[i][1], r: lw * 1.55, fill: colorOf(cfg.emp[i]), visibility: 'hidden' }, dots)]);
+        marks.push([i, el('circle', { r: lw * 1.55, fill: colorOf(cfg.emp[i]), visibility: 'hidden' }, dots)]);
       }
       const headHalo = el('circle', { r: lw * 2.8, fill: 'none', stroke: '#fff', 'stroke-width': lw * 1.4 }, ov);
       const head = el('circle', { r: lw * 2.8, fill: 'none', 'stroke-width': lw * 0.75 }, ov);
+
+      let px = null;
+      const setLine = (e, a, b) => {
+        e.setAttribute('x1', a[0].toFixed(1)); e.setAttribute('y1', a[1].toFixed(1));
+        e.setAttribute('x2', b[0].toFixed(1)); e.setAttribute('y2', b[1].toFixed(1));
+      };
+      function layout(P, upTo) {
+        px = project(P);
+        for (let k = 1; k <= upTo; k++) if (segs[k]) segs[k].forEach(e => setLine(e, px[k - 1], px[k]));
+        marks.forEach(([k, c]) => { if (k <= upTo) { c.setAttribute('cx', px[k][0].toFixed(1)); c.setAttribute('cy', px[k][1].toFixed(1)); } });
+        jumps.forEach(([k, l]) => { if (k <= upTo) setLine(l, px[k - 1], px[k]); });
+      }
+      if (!moving) layout(cfg.cam, n - 1);
+
       let upTo = 0;
       trail = i => {
+        if (moving) layout(cfg.cam[i], i);
         const set = (a, b, vis) => {
           for (let k = a; k <= b; k++) if (segs[k]) segs[k].forEach(e => e.setAttribute('visibility', vis));
         };
@@ -126,7 +143,7 @@
         upTo = i;
         marks.forEach(([k, c]) => c.setAttribute('visibility', k <= i ? 'visible' : 'hidden'));
         jumps.forEach(([k, l]) => l.setAttribute('visibility', k <= i ? 'visible' : 'hidden'));
-        [headHalo, head].forEach(c => { c.setAttribute('cx', cfg.px[i][0]); c.setAttribute('cy', cfg.px[i][1]); });
+        [headHalo, head].forEach(c => { c.setAttribute('cx', px[i][0].toFixed(1)); c.setAttribute('cy', px[i][1].toFixed(1)); });
         head.setAttribute('stroke', colorOf(cfg.emp[i]));
       };
     }
@@ -157,7 +174,7 @@
     if (hasState) [0, cfg.stateMax / 2].forEach(v => text(svg, L - 6, YS(v) + 4, String(+v.toFixed(2)), { 'text-anchor': 'end', 'font-size': 11 }));
 
     // empowerment curve (colored by value when the video shows the matching colored trail)
-    if (cfg.px) {
+    if (cfg.pts) {
       const defs = el('defs', {}, svg);
       const grad = el('linearGradient', { id: cfg.id + '-cbar', x1: 0, y1: 1, x2: 0, y2: 0 }, defs);
       PLASMA.forEach((c, k) => el('stop', { offset: k / (PLASMA.length - 1), 'stop-color': c }, grad));
@@ -248,6 +265,7 @@
     const t0 = d.t[0];
     TrajectoryPanel({
       id: 'traj-antsoccer',
+      pts: d.pts, cam: d.cam, frame: d.frame,
       fps: 15,
       emp: d.emp,
       bounds: [408, 459, 471, 500, 578, 600].map(t => t - t0),
@@ -265,7 +283,7 @@
     const t0 = d.t[0];
     TrajectoryPanel({
       id: 'traj-antmaze',
-      px: d.px, frame: d.frame, breaks: d.breaks,
+      pts: d.pts, cam: d.cam, frame: d.frame, breaks: d.breaks,
       fps: 30,
       emp: d.emp,
       bounds: [190, 270, 350, 460, 640].map(t => t - t0),
@@ -279,7 +297,7 @@
     const t0 = d.t[0];
     TrajectoryPanel({
       id: 'traj-pointmaze',
-      px: d.px, frame: d.frame, breaks: d.breaks,
+      pts: d.pts, cam: d.cam, frame: d.frame, breaks: d.breaks,
       fps: 30,
       emp: d.emp,
       bounds: [60, 169, 342, 358, 430].map(t => t - t0),
@@ -293,6 +311,7 @@
     const n = d.emp.length;
     TrajectoryPanel({
       id: 'traj-cube',
+      pts: d.pts, cam: d.cam, frame: d.frame,
       fps: 12,
       emp: d.emp,
       bounds: [0, 19, 21, 40, 48, 69, n - 1],
